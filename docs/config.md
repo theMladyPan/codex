@@ -19,6 +19,7 @@ Add a custom provider to `~/.codex/config.toml` and make it the active provider:
 
 ```toml
 model_provider = "my-openai-compatible"
+model = "my-model-name"
 
 [model_providers.my-openai-compatible]
 name = "My OpenAI-compatible server"
@@ -34,6 +35,12 @@ Then export the API key before starting Codex:
 export MY_LLM_API_KEY="your-api-key-here"
 ```
 
+Then start your compiled binary normally, for example:
+
+```bash
+./target/release/codex
+```
+
 Notes:
 
 - `base_url` should point at the root of the OpenAI-compatible API, usually ending in `/v1`.
@@ -42,6 +49,22 @@ Notes:
 - `wire_api` should be set to `"responses"`.
 - `requires_openai_auth = false` tells Codex to use this provider directly instead of requiring
   ChatGPT/OpenAI login.
+- `model` lets you force a specific model slug even if it does not appear in the model picker.
+
+### If your model is not visible in the model list
+
+Codex loads the model list from the active provider's `/models` endpoint. If your custom endpoint
+does not implement `/models`, or if it does not return your model in a picker-visible form, the
+model may not appear in the UI list even though you can still use it.
+
+In that case, set the model explicitly in `~/.codex/config.toml`:
+
+```toml
+model_provider = "my-openai-compatible"
+model = "my-model-name"
+```
+
+and start the binary again. Codex will use that model even when it is missing from the picker.
 
 ## Connecting to MCP servers
 
