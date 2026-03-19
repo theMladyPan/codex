@@ -6,6 +6,13 @@ For advanced configuration instructions, see [this documentation](https://develo
 
 For a full configuration reference, see [this documentation](https://developers.openai.com/codex/config-reference).
 
+## OpenAI-compatible custom providers
+
+Custom entries under `model_providers` can point at OpenAI-compatible APIs, including
+localhost-served LLMs. When the active provider does not require OpenAI auth, Codex now uses that
+provider for model discovery too, so `/models` responses from the custom endpoint can populate the
+available model list.
+
 ## Connecting to MCP servers
 
 Codex can connect to MCP servers configured in `~/.codex/config.toml`. See the configuration reference for the latest MCP server options:

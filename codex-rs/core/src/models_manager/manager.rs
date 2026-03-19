@@ -396,7 +396,9 @@ impl ModelsManager {
             return Ok(());
         }
 
-        if self.auth_manager.auth_mode() != Some(AuthMode::Chatgpt) {
+        if self.provider.requires_openai_auth
+            && self.auth_manager.auth_mode() != Some(AuthMode::Chatgpt)
+        {
             if matches!(
                 refresh_strategy,
                 RefreshStrategy::Offline | RefreshStrategy::OnlineIfUncached

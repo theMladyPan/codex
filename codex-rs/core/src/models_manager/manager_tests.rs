@@ -544,7 +544,7 @@ async fn refresh_available_models_drops_removed_remote_models() {
 }
 
 #[tokio::test]
-async fn refresh_available_models_skips_network_without_chatgpt_auth() {
+async fn refresh_available_models_fetches_for_custom_provider_without_chatgpt_auth() {
     let server = MockServer::start().await;
     let dynamic_slug = "dynamic-model-only-for-test-noauth";
     let models_mock = mount_models_once(
@@ -571,18 +571,61 @@ async fn refresh_available_models_skips_network_without_chatgpt_auth() {
     manager
         .refresh_available_models(RefreshStrategy::Online)
         .await
-        .expect("refresh should no-op without chatgpt auth");
+        .expect("custom provider refresh should succeed without chatgpt auth");
+    let cached_remote = manager.get_remote_models().await;
+    assert!(
+        cached_remote
+            .iter()
+            .any(|candidate| candidate.slug == dynamic_slug),
+        "custom provider should refresh remote models without chatgpt auth"
+    );
+    assert_eq!(
+        models_mock.requests().len(),
+        1,
+        "custom provider should hit /models once"
+    );
+}
+
+#[tokio::test]
+async fn refresh_available_models_skips_network_for_openai_provider_without_chatgpt_auth() {
+    let server = MockServer::start().await;
+    let dynamic_slug = "dynamic-model-only-for-test-openai-noauth";
+    let models_mock = mount_models_once(
+        &server,
+        ModelsResponse {
+            models: vec![remote_model(dynamic_slug, "No Auth", 1)],
+        },
+    )
+    .await;
+
+    let codex_home = tempdir().expect("temp dir");
+    let auth_manager = Arc::new(AuthManager::new(
+        codex_home.path().to_path_buf(),
+        false,
+        AuthCredentialsStoreMode::File,
+    ));
+    let provider = ModelProviderInfo::create_openai_provider(Some(server.uri()));
+    let manager = ModelsManager::with_provider_for_tests(
+        codex_home.path().to_path_buf(),
+        auth_manager,
+        provider,
+    );
+
+    manager
+        .refresh_available_models(RefreshStrategy::Online)
+        .await
+        .expect("openai provider refresh should no-op without chatgpt auth");
     let cached_remote = manager.get_remote_models().await;
     assert!(
         !cached_remote
             .iter()
             .any(|candidate| candidate.slug == dynamic_slug),
-        "remote refresh should be skipped without chatgpt auth"
+        "openai provider should still skip remote refresh without chatgpt auth"
     );
     assert_eq!(
         models_mock.requests().len(),
         0,
-        "no auth should avoid /models requests"
+        "openai provider should avoid /models requests without chatgpt auth"
     );
 }
 
