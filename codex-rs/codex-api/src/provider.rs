@@ -89,6 +89,10 @@ impl Provider {
         is_azure_responses_wire_base_url(&self.name, Some(&self.base_url))
     }
 
+    pub fn supports_openai_responses_features(&self) -> bool {
+        supports_openai_responses_features(&self.name, Some(&self.base_url))
+    }
+
     pub fn websocket_url_for_path(&self, path: &str) -> Result<Url, url::ParseError> {
         let mut url = Url::parse(&self.url_for_path(path))?;
 
@@ -114,6 +118,21 @@ pub fn is_azure_responses_wire_base_url(name: &str, base_url: Option<&str>) -> b
 
     let base = base_url.to_ascii_lowercase();
     base.contains("openai.azure.") || matches_azure_responses_base_url(&base)
+}
+
+pub fn supports_openai_responses_features(name: &str, base_url: Option<&str>) -> bool {
+    if name.eq_ignore_ascii_case("openai") || is_azure_responses_wire_base_url(name, base_url) {
+        return true;
+    }
+
+    let Some(base_url) = base_url else {
+        return false;
+    };
+
+    let base = base_url.to_ascii_lowercase();
+    base.starts_with("https://api.openai.com/")
+        || base.starts_with("http://api.openai.com/")
+        || base.contains("chatgpt.com/backend-api/codex")
 }
 
 fn matches_azure_responses_base_url(base_url: &str) -> bool {
@@ -164,6 +183,37 @@ mod tests {
             assert!(
                 !is_azure_responses_wire_base_url("test", Some(base_url)),
                 "expected {base_url} not to be detected as Azure"
+            );
+        }
+    }
+
+    #[test]
+    fn detects_openai_responses_feature_support() {
+        let positive_cases = [
+            ("openai", Some("https://example.com")),
+            ("custom", Some("https://api.openai.com/v1")),
+            ("custom", Some("https://chatgpt.com/backend-api/codex")),
+            ("azure", Some("https://example.com")),
+            ("custom", Some("https://foo.openai.azure.com/openai")),
+        ];
+
+        for (name, base_url) in positive_cases {
+            assert!(
+                supports_openai_responses_features(name, base_url),
+                "expected {name:?} {base_url:?} to support native OpenAI Responses features"
+            );
+        }
+
+        let negative_cases = [
+            ("gpt-oss", Some("http://localhost:1234/v1")),
+            ("custom", Some("https://example.com/v1")),
+            ("custom", None),
+        ];
+
+        for (name, base_url) in negative_cases {
+            assert!(
+                !supports_openai_responses_features(name, base_url),
+                "expected {name:?} {base_url:?} not to support native OpenAI Responses features"
             );
         }
     }

@@ -2,13 +2,22 @@ use super::AuthRequestTelemetryContext;
 use super::ModelClient;
 use super::PendingUnauthorizedRetry;
 use super::UnauthorizedRecoveryExecution;
+use crate::client_common::Prompt;
+use crate::client_common::tools::ToolSpec;
 use codex_otel::SessionTelemetry;
 use codex_protocol::ThreadId;
+use codex_protocol::config_types::ReasoningSummary as ReasoningSummaryConfig;
+use codex_protocol::config_types::ServiceTier;
+use codex_protocol::models::BaseInstructions;
+use codex_protocol::models::ContentItem;
+use codex_protocol::models::ResponseItem;
 use codex_protocol::openai_models::ModelInfo;
 use codex_protocol::protocol::SessionSource;
 use codex_protocol::protocol::SubAgentSource;
 use pretty_assertions::assert_eq;
 use serde_json::json;
+use std::sync::Arc;
+use std::sync::OnceLock;
 
 fn test_model_client(session_source: SessionSource) -> ModelClient {
     let provider = crate::model_provider_info::create_oss_provider_with_base_url(
@@ -25,6 +34,30 @@ fn test_model_client(session_source: SessionSource) -> ModelClient {
         false,
         None,
     )
+}
+
+fn test_openai_model_client(session_source: SessionSource) -> ModelClient {
+    let provider =
+        crate::model_provider_info::built_in_model_providers(/* openai_base_url */ None)["openai"]
+            .clone();
+    ModelClient::new(
+        None,
+        ThreadId::new(),
+        provider,
+        session_source,
+        None,
+        false,
+        false,
+        None,
+    )
+}
+
+fn test_model_client_session(client: ModelClient) -> super::ModelClientSession {
+    super::ModelClientSession {
+        client,
+        websocket_session: Default::default(),
+        turn_state: Arc::new(OnceLock::new()),
+    }
 }
 
 fn test_model_info() -> ModelInfo {
@@ -72,6 +105,33 @@ fn test_session_telemetry() -> SessionTelemetry {
     )
 }
 
+fn test_prompt() -> Prompt {
+    Prompt {
+        input: vec![ResponseItem::Message {
+            id: None,
+            role: "developer".to_string(),
+            content: vec![ContentItem::InputText {
+                text: "stay focused".to_string(),
+            }],
+            end_turn: None,
+            phase: None,
+        }],
+        tools: vec![ToolSpec::WebSearch {
+            external_web_access: Some(false),
+            filters: None,
+            user_location: None,
+            search_context_size: None,
+            search_content_types: None,
+        }],
+        parallel_tool_calls: true,
+        base_instructions: BaseInstructions {
+            text: "base instructions".to_string(),
+        },
+        personality: None,
+        output_schema: None,
+    }
+}
+
 #[test]
 fn build_subagent_headers_sets_other_subagent_label() {
     let client = test_model_client(SessionSource::SubAgent(SubAgentSource::Other(
@@ -114,4 +174,87 @@ fn auth_request_telemetry_context_tracks_attached_auth_and_retry_phase() {
     assert!(auth_context.retry_after_unauthorized);
     assert_eq!(auth_context.recovery_mode, Some("managed"));
     assert_eq!(auth_context.recovery_phase, Some("refresh_token"));
+}
+
+#[test]
+fn build_responses_request_omits_openai_specific_fields_for_compatible_backends() {
+    let session = test_model_client_session(test_model_client(SessionSource::Cli));
+    let prompt = test_prompt();
+    let model_info = test_model_info();
+    let api_provider = session
+        .client
+        .state
+        .provider
+        .to_api_provider(None)
+        .expect("provider should convert");
+
+    let request = session
+        .build_responses_request(
+            &api_provider,
+            &prompt,
+            &model_info,
+            None,
+            ReasoningSummaryConfig::None,
+            Some(ServiceTier::Fast),
+        )
+        .expect("request should build");
+
+    assert_eq!(request.prompt_cache_key, None);
+    assert_eq!(request.service_tier, None);
+    assert_eq!(request.tools, Vec::<serde_json::Value>::new());
+    assert_eq!(
+        request.input,
+        vec![ResponseItem::Message {
+            id: None,
+            role: "system".to_string(),
+            content: vec![ContentItem::InputText {
+                text: "stay focused".to_string(),
+            }],
+            end_turn: None,
+            phase: None,
+        }]
+    );
+}
+
+#[test]
+fn build_responses_request_keeps_openai_responses_features_for_openai() {
+    let session = test_model_client_session(test_openai_model_client(SessionSource::Cli));
+    let prompt = test_prompt();
+    let model_info = test_model_info();
+    let api_provider = session
+        .client
+        .state
+        .provider
+        .to_api_provider(None)
+        .expect("provider should convert");
+
+    let request = session
+        .build_responses_request(
+            &api_provider,
+            &prompt,
+            &model_info,
+            None,
+            ReasoningSummaryConfig::None,
+            Some(ServiceTier::Fast),
+        )
+        .expect("request should build");
+
+    assert_eq!(
+        request.prompt_cache_key,
+        Some(session.client.state.conversation_id.to_string())
+    );
+    assert_eq!(request.service_tier, Some("priority".to_string()));
+    assert_eq!(request.tools.len(), 1);
+    assert_eq!(
+        request.input,
+        vec![ResponseItem::Message {
+            id: None,
+            role: "developer".to_string(),
+            content: vec![ContentItem::InputText {
+                text: "stay focused".to_string(),
+            }],
+            end_turn: None,
+            phase: None,
+        }]
+    );
 }

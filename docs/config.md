@@ -92,6 +92,8 @@ Notes:
 - If your LM Studio model does not appear in the model picker, keep `model = "my-model-name"`
   in config anyway. Codex can still use the model when it is set explicitly.
 - `model` must match the exact model identifier exposed by LM Studio.
+- For best results, use a tool-capable model such as `openai/gpt-oss-20b`. Generic local chat
+  models may load in LM Studio but still fail during Codex tool-calling turns.
 
 ## Connecting to MCP servers
 

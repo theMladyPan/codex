@@ -689,8 +689,17 @@ impl ModelClientSession {
         service_tier: Option<ServiceTier>,
     ) -> Result<ResponsesApiRequest> {
         let instructions = &prompt.base_instructions.text;
-        let input = prompt.get_formatted_input();
-        let tools = create_tools_json_for_responses_api(&prompt.tools)?;
+        let supports_openai_responses_features = provider.supports_openai_responses_features();
+        let mut input = prompt.get_formatted_input();
+        if !supports_openai_responses_features {
+            Self::normalize_compatible_responses_input(&mut input);
+        }
+        let mut tools = create_tools_json_for_responses_api(&prompt.tools)?;
+        if !supports_openai_responses_features {
+            tools.retain(|tool| {
+                tool.get("type").and_then(serde_json::Value::as_str) != Some("web_search")
+            });
+        }
         let default_reasoning_effort = model_info.default_reasoning_level;
         let reasoning = if model_info.supports_reasoning_summaries {
             Some(Reasoning {
@@ -724,7 +733,8 @@ impl ModelClientSession {
             None
         };
         let text = create_text_param_for_request(verbosity, &prompt.output_schema);
-        let prompt_cache_key = Some(self.client.state.conversation_id.to_string());
+        let prompt_cache_key = supports_openai_responses_features
+            .then(|| self.client.state.conversation_id.to_string());
         let request = ResponsesApiRequest {
             model: model_info.slug.clone(),
             instructions: instructions.clone(),
@@ -736,15 +746,29 @@ impl ModelClientSession {
             store: provider.is_azure_responses_endpoint(),
             stream: true,
             include,
-            service_tier: match service_tier {
-                Some(ServiceTier::Fast) => Some("priority".to_string()),
-                Some(service_tier) => Some(service_tier.to_string()),
-                None => None,
+            service_tier: if supports_openai_responses_features {
+                match service_tier {
+                    Some(ServiceTier::Fast) => Some("priority".to_string()),
+                    Some(service_tier) => Some(service_tier.to_string()),
+                    None => None,
+                }
+            } else {
+                None
             },
             prompt_cache_key,
             text,
         };
         Ok(request)
+    }
+
+    fn normalize_compatible_responses_input(input: &mut [ResponseItem]) {
+        input.iter_mut().for_each(|item| {
+            if let ResponseItem::Message { role, .. } = item
+                && role == "developer"
+            {
+                *role = "system".to_string();
+            }
+        });
     }
 
     #[allow(clippy::too_many_arguments)]
