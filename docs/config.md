@@ -13,6 +13,36 @@ localhost-served LLMs. When the active provider does not require OpenAI auth, Co
 provider for model discovery too, so `/models` responses from the custom endpoint can populate the
 available model list.
 
+### Quick setup for a custom endpoint and API key
+
+Add a custom provider to `~/.codex/config.toml` and make it the active provider:
+
+```toml
+model_provider = "my-openai-compatible"
+
+[model_providers.my-openai-compatible]
+name = "My OpenAI-compatible server"
+base_url = "http://localhost:1234/v1"
+env_key = "MY_LLM_API_KEY"
+wire_api = "responses"
+requires_openai_auth = false
+```
+
+Then export the API key before starting Codex:
+
+```bash
+export MY_LLM_API_KEY="your-api-key-here"
+```
+
+Notes:
+
+- `base_url` should point at the root of the OpenAI-compatible API, usually ending in `/v1`.
+- `env_key` is the name of the environment variable that stores the API key. For a local server
+  without auth, you can omit `env_key`.
+- `wire_api` should be set to `"responses"`.
+- `requires_openai_auth = false` tells Codex to use this provider directly instead of requiring
+  ChatGPT/OpenAI login.
+
 ## Connecting to MCP servers
 
 Codex can connect to MCP servers configured in `~/.codex/config.toml`. See the configuration reference for the latest MCP server options:
