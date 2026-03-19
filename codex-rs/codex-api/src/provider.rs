@@ -120,6 +120,11 @@ pub fn is_azure_responses_wire_base_url(name: &str, base_url: Option<&str>) -> b
     base.contains("openai.azure.") || matches_azure_responses_base_url(&base)
 }
 
+/// Returns whether a provider is expected to support OpenAI-native Responses API features.
+///
+/// This gates request fields and hosted tools that are specific to OpenAI/Azure-style Responses
+/// deployments, such as `prompt_cache_key`, `service_tier`, developer-role messages, and hosted
+/// `web_search` tools.
 pub fn supports_openai_responses_features(name: &str, base_url: Option<&str>) -> bool {
     if name.eq_ignore_ascii_case("openai") || is_azure_responses_wire_base_url(name, base_url) {
         return true;

@@ -761,6 +761,11 @@ impl ModelClientSession {
         Ok(request)
     }
 
+    /// Rewrites developer-role messages for backends that only support system/user/assistant.
+    ///
+    /// OpenAI-compatible third-party providers such as LM Studio often normalize `developer` to
+    /// `system` themselves; performing that rewrite client-side avoids extra warnings and keeps the
+    /// request closer to the subset those backends consistently accept.
     fn normalize_compatible_responses_input(input: &mut [ResponseItem]) {
         input.iter_mut().for_each(|item| {
             if let ResponseItem::Message { role, .. } = item
