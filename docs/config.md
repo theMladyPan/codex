@@ -6,6 +6,95 @@ For advanced configuration instructions, see [this documentation](https://develo
 
 For a full configuration reference, see [this documentation](https://developers.openai.com/codex/config-reference).
 
+## OpenAI-compatible custom providers
+
+Custom entries under `model_providers` can point at OpenAI-compatible APIs, including
+localhost-served LLMs. When the active provider does not require OpenAI auth, Codex now uses that
+provider for model discovery too, so `/models` responses from the custom endpoint can populate the
+available model list.
+
+### Quick setup for a custom endpoint and API key
+
+Add a custom provider to `~/.codex/config.toml` and make it the active provider:
+
+```toml
+model_provider = "my-openai-compatible"
+model = "my-model-name"
+
+[model_providers.my-openai-compatible]
+name = "My OpenAI-compatible server"
+base_url = "http://localhost:1234/v1"
+env_key = "MY_LLM_API_KEY"
+wire_api = "responses"
+requires_openai_auth = false
+```
+
+Then export the API key before starting Codex:
+
+```bash
+export MY_LLM_API_KEY="your-api-key-here"
+```
+
+Then start your compiled binary normally, for example:
+
+```bash
+./target/release/codex
+```
+
+Notes:
+
+- `base_url` should point at the root of the OpenAI-compatible API, usually ending in `/v1`.
+- `env_key` is the name of the environment variable that stores the API key. For a local server
+  without auth, you can omit `env_key`.
+- `wire_api` should be set to `"responses"`.
+- `requires_openai_auth = false` tells Codex to use this provider directly instead of requiring
+  ChatGPT/OpenAI login.
+- `model` lets you force a specific model slug even if it does not appear in the model picker.
+
+### If your model is not visible in the model list
+
+Codex loads the model list from the active provider's `/models` endpoint. If your custom endpoint
+does not implement `/models`, or if it does not return your model in a picker-visible form, the
+model may not appear in the UI list even though you can still use it.
+
+In that case, set the model explicitly in `~/.codex/config.toml`:
+
+```toml
+model_provider = "my-openai-compatible"
+model = "my-model-name"
+```
+
+and start the binary again. Codex will use that model even when it is missing from the picker.
+
+## LM Studio
+
+Codex includes a built-in LM Studio provider, so you do not need to add a custom
+`[model_providers...]` entry for the default local LM Studio server.
+
+If LM Studio is running locally, add this to `~/.codex/config.toml`:
+
+```toml
+model_provider = "lmstudio"
+model = "my-model-name"
+```
+
+Then start your compiled binary normally:
+
+```bash
+./target/release/codex
+```
+
+Notes:
+
+- The built-in `lmstudio` provider points to `http://localhost:1234/v1` by default.
+- If LM Studio is listening on a different port or URL, set `CODEX_OSS_PORT` or
+  `CODEX_OSS_BASE_URL` before starting Codex.
+- If your LM Studio model does not appear in the model picker, keep `model = "my-model-name"`
+  in config anyway. Codex can still use the model when it is set explicitly.
+- `model` must match the exact model identifier exposed by LM Studio.
+- For best results, use a tool-capable model such as `openai/gpt-oss-20b`. Generic local chat
+  models may load in LM Studio but still fail during Codex tool-calling turns.
+
 ## Connecting to MCP servers
 
 Codex can connect to MCP servers configured in `~/.codex/config.toml`. See the configuration reference for the latest MCP server options:

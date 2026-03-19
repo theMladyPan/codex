@@ -10,6 +10,7 @@ use codex_protocol::models::ResponseItem;
 use codex_protocol::openai_models::ModelsResponse;
 use core_test_support::responses::mount_models_once;
 use pretty_assertions::assert_eq;
+use std::sync::Arc;
 use std::time::Duration;
 use tempfile::tempdir;
 use wiremock::MockServer;
@@ -157,7 +158,7 @@ async fn shutdown_all_threads_bounded_submits_shutdown_to_every_thread() {
 }
 
 #[tokio::test]
-async fn new_uses_configured_openai_provider_for_model_refresh() {
+async fn new_uses_active_model_provider_for_model_refresh() {
     let server = MockServer::start().await;
     let models_mock = mount_models_once(&server, ModelsResponse { models: vec![] }).await;
 
@@ -167,14 +168,21 @@ async fn new_uses_configured_openai_provider_for_model_refresh() {
     config.cwd = config.codex_home.clone();
     std::fs::create_dir_all(&config.codex_home).expect("create codex home");
     config.model_catalog = None;
+    let mut custom_provider = config.model_provider.clone();
+    custom_provider.name = "openai-custom".to_string();
+    custom_provider.base_url = Some(server.uri());
+    custom_provider.requires_openai_auth = false;
+    config.model_provider_id = "openai-custom".to_string();
+    config.model_provider = custom_provider.clone();
     config
         .model_providers
-        .get_mut("openai")
-        .expect("openai provider should exist")
-        .base_url = Some(server.uri());
+        .insert("openai-custom".to_string(), custom_provider);
 
-    let auth_manager =
-        AuthManager::from_auth_for_testing(CodexAuth::create_dummy_chatgpt_auth_for_testing());
+    let auth_manager = Arc::new(AuthManager::new(
+        config.codex_home.clone(),
+        false,
+        crate::auth::AuthCredentialsStoreMode::File,
+    ));
     let manager = ThreadManager::new(
         &config,
         auth_manager,
